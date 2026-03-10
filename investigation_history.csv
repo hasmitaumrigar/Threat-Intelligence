@@ -1,0 +1,8 @@
+IP,Country,ISP,Abuse Score,Reports
+8.8.8.8,US,Google LLC,0,57
+1.1.1.1,AU,APNIC and Cloudflare DNS Resolver project,0,313
+185.199.108.153,US,"GitHub, Inc.",34,11
+192.168.1.1,,,0,0
+10.0.0.1,,,0,20
+45.32.64.55,US,"Vultr Holdings, LLC",0,0
+185.220.101.15,DE,Artikel10 e.V.,100,165
