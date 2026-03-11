@@ -18,7 +18,7 @@ A SOC-style dashboard for cybersecurity threat intelligence investigations. Anal
 
 1. Clone the repository:
    
-git clone https://github.com/hasmitaumrigar/Threat-Intelligence-Dashboard.git
+git clone https://github.com/hasmitaumrigar/Cyber-Threat-Intelligence.git
 
 cd Cyber-Threat-Intelligence
 
