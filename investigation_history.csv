@@ -9,3 +9,7 @@ IP,Country,ISP,Abuse Score,Reports,Risk
 185.220.101.1,DE,Artikel10 e.V.,100,163,High Risk 🔴
 91.214.240.0,RU,Altagen JSC,0,0,Low Risk 🟢
 91.214.240.0,RU,Altagen JSC,0,0,Low Risk 🟢
+45.155.205.233,RU,Cloud Technologies LLC trading as Cloud.ru,7,3,High Risk 🔴
+91.214.240.0,RU,Altagen JSC,0,0,Low Risk 🟢
+185.220.101.1,DE,Artikel10 e.V.,100,161,High Risk 🔴
+185.220.101.1,DE,Artikel10 e.V.,100,161,High Risk 🔴
