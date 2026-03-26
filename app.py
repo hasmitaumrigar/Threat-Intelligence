@@ -3,254 +3,310 @@
 import streamlit as st
 import pandas as pd
 import os
-import pydeck as pdk
+import csv
+import requests
 from datetime import datetime
 from threat_lookup import lookup_ip
-from multi_threat_lookup import check_abuseipdb, check_virustotal, check_otx
+from multi_threat_lookup import (
+    VT_KEY,
+    detect_ioc_type,
+    check_domain, check_file_hash,
+    check_abuseipdb, check_virustotal, check_otx,
+    validate_otx_key,
+    HIGH_RISK_CATEGORIES, MEDIUM_RISK_CATEGORIES,
+)
 from report_generator import generate_report
 
 # -------------------------------
-# API Keys
+# CONFIG
 # -------------------------------
-ABUSEIPDB_KEY = "3259ccd3075ba4eda559ddcd04591ca9c111a1d9b95914015d4b9bfa961d0c90dcb680546a7e6ca1"
-VT_KEY = "d6f6b7586a967187fd00d0cb122b419e9634736c90da3b40d26cdbb441c6023d"
-OTX_KEY = "8cefcbea66bfced732d9ce10f8c5bdc84db9afbef8efca1a24a9d1c4e32e703e"
+st.set_page_config(page_title="Threat Intelligence Dashboard", layout="wide")
 
-# -------------------------------
-# Dashboard Title
-# -------------------------------
-st.set_page_config(page_title="Cyber Threat Intelligence Dashboard", layout="wide")
-st.title("Cyber Threat Intelligence Dashboard")
-
-# -------------------------------
-# investigation_history.csv
-# -------------------------------
 history_file = "investigation_history.csv"
-if not os.path.exists(history_file):
-    pd.DataFrame(
-        columns=["Time","IOC","IOC Type","IP","Country","ISP","Abuse Score","Reports","Risk"]
-    ).to_csv(history_file, index=False)
+CSV_HEADERS  = ["Time", "IOC", "IOC Type", "IP", "Country", "ISP",
+                "Abuse Score", "Reports", "Risk"]
 
 # -------------------------------
-# Load history
+# Risk Classifier
 # -------------------------------
-history = pd.read_csv(history_file)
-
-# -------------------------------
-# SOC High-Risk Alert Panel
-# -------------------------------
-if "Risk" in history.columns:
-    high_risk_ips = history[history["Risk"] == "High Risk 🔴"]
-    if not high_risk_ips.empty:
-        st.error(f"⚠ ALERT: {len(high_risk_ips)} High Risk IOC(s) detected! Review immediately.")
-        st.subheader("High-Risk IOC(s)")
-        st.table(high_risk_ips[["IOC","IOC Type","IP","Country","ISP","Abuse Score","Reports"]])
-
-# -------------------------------
-# Input IOC (IP / Domain / File Hash)
-# -------------------------------
-ioc_type = st.selectbox(
-    "Select IOC Type",
-    ["IP Address", "Domain", "File Hash"],
-    key="ioc_type_selectbox"
-)
-
-ioc_value = st.text_input(
-    "Enter IOC",
-    key="ioc_value_input"
-)
-
-# -------------------------------
-# Risk Classification Function
-# -------------------------------
-def classify_risk(score):
+def classify_risk(score: int) -> str:
     if score >= 75:
         return "High Risk 🔴"
-    elif score >= 50:
+    elif score >= 40:
         return "Medium Risk 🟠"
     else:
         return "Low Risk 🟢"
 
 # -------------------------------
-# Unified Threat Score Function
+# Show which categories triggered a boost
 # -------------------------------
-def unified_threat_score(abuse_score, vt_data, otx_data):
-    score = abuse_score
-    vt_malicious = vt_data.get("data", {}).get("attributes", {}).get("last_analysis_stats", {}).get("malicious", 0)
-    score += vt_malicious * 10
-    otx_count = len(otx_data.get("pulse_info", {}).get("pulses", []))
-    score += otx_count * 5
-    return min(score, 100)
+def explain_category_risk(categories: dict) -> str:
+    if not categories:
+        return ""
+    all_labels = " ".join(str(v) for v in categories.values()).lower()
+    triggered = []
+    for kw in HIGH_RISK_CATEGORIES:
+        if kw in all_labels:
+            triggered.append(f"🔴 `{kw}` (high-risk category)")
+    for kw in MEDIUM_RISK_CATEGORIES:
+        if kw in all_labels and not any(kw in t for t in triggered):
+            triggered.append(f"🟠 `{kw}` (medium-risk category)")
+    if triggered:
+        return "**Category risk triggers:**\n" + "\n".join(f"- {t}" for t in triggered)
+    return ""
 
 # -------------------------------
-# Placeholder Functions for Domain & File Hash
+# History helpers
 # -------------------------------
-def check_file_hash(filehash):
-    # Fake example: replace with real API call later
-    return {
-        "IOC": filehash,
-        "IOC Type": "File Hash",
-        "Malicious Count": 0,
-        "Total Reports": 0,
-        "Country": None,
-        "Abuse Score": 0,
-        "Risk": "Low Risk 🟢"
-    }
+def load_history() -> pd.DataFrame:
+    if os.path.exists(history_file) and os.path.getsize(history_file) > 0:
+        try:
+            df = pd.read_csv(history_file)
+            return df.fillna("N/A")
+        except pd.errors.EmptyDataError:
+            pass
+    return pd.DataFrame()
 
-def check_domain(domain):
-    # Fake example
-    return {
-        "IOC": domain,
-        "IOC Type": "Domain",
-        "Country": None,
-        "Abuse Score": 0,
-        "Reports": 0,
-        "Risk": "Low Risk 🟢"
-    }
-# Check Threat Button
+def save_to_csv(result: dict):
+    file_exists = os.path.isfile(history_file) and os.path.getsize(history_file) > 0
+    with open(history_file, mode="a", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(CSV_HEADERS)
+        writer.writerow([
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            result.get("IOC",         "N/A"),
+            result.get("IOC Type",    "N/A"),
+            result.get("IP",          "N/A"),
+            result.get("Country",     "N/A"),
+            result.get("ISP",         "N/A"),
+            result.get("Abuse Score", 0),
+            result.get("Reports",     0),
+            result.get("Risk",        "N/A"),
+        ])
+
 # -------------------------------
+# Dashboard
+# -------------------------------
+st.title("Threat Intelligence Dashboard")
+
+# OTX key warning shown once at top
+if not validate_otx_key():
+    st.sidebar.warning("⚠️ OTX API key not configured or invalid. OTX results will show 0 pulses.")
+
+ioc_type  = st.selectbox("Select IOC Type", ["IP Address", "Domain", "File Hash"])
+ioc_value = st.text_input("Enter IOC")
+
+if ioc_value:
+    detected = detect_ioc_type(ioc_value.strip())
+    if detected != "Unknown" and detected != ioc_type:
+        st.warning(
+            f"⚠️ Detected IOC type **{detected}** doesn't match selected "
+            f"**{ioc_type}**. Auto-correcting."
+        )
+        ioc_type = detected
+
+history = load_history()
+
+# ================================================================
+# CHECK THREAT
+# ================================================================
 if st.button("Check Threat") and ioc_value:
-    result = {"IOC": ioc_value, "IOC Type": ioc_type}
-    
+
+    result      = {"IOC": ioc_value, "IOC Type": ioc_type}
+    save_result = True
+
+    # ── IP Address ──────────────────────────────────────────────
     if ioc_type == "IP Address":
-        result_ip = lookup_ip(ioc_value)
-        abuse_data = check_abuseipdb(ioc_value, ABUSEIPDB_KEY)
-        vt_data = check_virustotal(ioc_value, VT_KEY)
-        otx_data = check_otx(ioc_value, OTX_KEY)
-        score = unified_threat_score(result_ip["Abuse Score"], vt_data, otx_data)
-        result.update(result_ip)
-        result["Unified Threat Score"] = score
-        result["Risk"] = classify_risk(score)
 
-        st.subheader("Threat Intelligence Result")
-        st.write(result)
-        st.write("Unified Threat Score:", score)
+        abuse_data = check_abuseipdb(ioc_value)
+        otx_data   = check_otx(ioc_value, ioc_type="IPv4")
+        vt_data    = check_virustotal(ioc_value, ioc_type="ip")
 
-        # Multi-source display
-        st.subheader("Threat Intelligence Sources")
-        st.write("AbuseIPDB Result")
-        st.json(abuse_data)
-        st.write("VirusTotal Result")
-        st.json(vt_data)
-        st.write("AlienVault OTX Result")
-        st.json(otx_data)
+        top_score = max(
+            abuse_data.get("Abuse Score", 0),
+            otx_data.get("Abuse Score",   0),
+            vt_data.get("Abuse Score",    0),
+        )
 
+        result.update({
+            "IP":          abuse_data.get("IP",      ioc_value),
+            "Country":     abuse_data.get("Country", "N/A"),
+            "ISP":         abuse_data.get("ISP",     "N/A"),
+            "Abuse Score": top_score,
+            "Reports":     abuse_data.get("Reports", 0),
+            "Risk":        classify_risk(top_score),
+        })
+
+        if "Error" in abuse_data:
+            st.error(f"AbuseIPDB error: {abuse_data['Error']}")
+            save_result = False
+        else:
+            st.subheader("🔍 Threat Intelligence Result")
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.markdown("### 🛡️ AbuseIPDB")
+                st.json({k: v for k, v in abuse_data.items() if k != "source"})
+            with col2:
+                st.markdown("### 🔬 VirusTotal")
+                st.json({k: v for k, v in vt_data.items() if k != "source"})
+            with col3:
+                st.markdown("### 👁️ OTX AlienVault")
+                st.json({k: v for k, v in otx_data.items() if k != "source"})
+                if "Error" in otx_data:
+                    st.caption(f"⚠️ {otx_data['Error']}")
+            st.markdown(f"### Overall Risk: **{result['Risk']}**")
+
+    # ── Domain ──────────────────────────────────────────────────
     elif ioc_type == "Domain":
-        domain_result = check_domain(ioc_value)
-        result.update(domain_result)
-        result["Risk"] = "N/A"
-        st.subheader("Domain Threat Result")
-        st.write(domain_result)
 
+        vt_data  = check_domain(ioc_value)
+        otx_data = check_otx(ioc_value, ioc_type="domain")
+
+        top_score = max(
+            vt_data.get("Abuse Score",  0),
+            otx_data.get("Abuse Score", 0),
+        )
+
+        result.update({
+            "Country":     otx_data.get("Country", "N/A"),
+            "ISP":         "N/A",
+            "Abuse Score": top_score,
+            "Reports":     vt_data.get("Malicious Count", 0),
+            "Risk":        classify_risk(top_score),
+        })
+
+        st.subheader("🔍 Domain Threat Result")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("### 🔬 VirusTotal")
+            vt_display = {k: v for k, v in vt_data.items()
+                          if k not in ("source", "Categories")}
+            st.json(vt_display)
+            undetected = vt_data.get("Undetected", 0)
+            harmless   = vt_data.get("Harmless",   0)
+            total_eng  = vt_data.get("Total Engines", 0)
+            if total_eng > 0 and harmless == 0 and undetected == total_eng:
+                st.warning(
+                    "⚠️ All engines returned 'Undetected' with zero Harmless verdicts. "
+                    "This domain has not been analyzed by any engine — treat as suspicious "
+                    "until proven clean."
+                )
+            cats = vt_data.get("Categories", {})
+            if cats:
+                st.markdown("**🏷️ VT Categories:**")
+                for engine, label in cats.items():
+                    st.caption(f"• {engine}: `{label}`")
+            explanation = explain_category_risk(cats)
+            if explanation:
+                st.markdown(explanation)
+
+            if "Error" in vt_data:
+                st.error(f"VirusTotal error: {vt_data['Error']}")
+            elif "Status" in vt_data:
+                st.info(f"ℹ️ {vt_data['Status']}")
+
+        with col2:
+            st.markdown("### 👁️ OTX AlienVault")
+            st.json({k: v for k, v in otx_data.items() if k != "source"})
+            if "Error" in otx_data:
+                st.caption(f"⚠️ {otx_data['Error']}")
+
+        st.markdown(f"### Overall Risk: **{result['Risk']}**")
+
+    # ── File Hash ────────────────────────────────────────────────
     elif ioc_type == "File Hash":
-        file_result = check_file_hash(ioc_value)
-        result.update(file_result)
-        result["Risk"] = "N/A"
-        st.subheader("File Hash Threat Result")
-        st.write(file_result)
 
-    # -------------------------------
-    # Save to CSV (inside the same button block!)
-    from datetime import datetime
-    result["Time"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    columns = ["IOC","IOC Type","IP","Country","ISP","Abuse Score","Reports","Risk","Time"]
-    df = pd.DataFrame([result], columns=columns)
-    df.to_csv(history_file, mode="a", index=False, header=False)
+        vt_data  = check_file_hash(ioc_value)
+        otx_data = check_otx(ioc_value, ioc_type="file")
 
-    # -------------------------------
-    # Download report (also inside!)
-    if st.button("Download Report"):
-        generate_report(result)
-        st.success("Report generated: Threat_Report.pdf")
-# -------------------------------
-# Reload history
-# -------------------------------
-history = pd.read_csv(history_file)
+        top_score = max(
+            vt_data.get("Abuse Score",  0),
+            otx_data.get("Abuse Score", 0),
+        )
 
-# -------------------------------
-# SOC Threat Summary
-# -------------------------------
+        result.update({
+            "Country":     "N/A",
+            "ISP":         "N/A",
+            "Abuse Score": top_score,
+            "Reports":     vt_data.get("Malicious Count", 0),
+            "Risk":        classify_risk(top_score),
+        })
+
+        st.subheader("🔍 File Hash Threat Result")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("### 🔬 VirusTotal")
+            st.json({k: v for k, v in vt_data.items() if k != "source"})
+            if "Error" in vt_data:
+                st.error(f"VirusTotal error: {vt_data['Error']}")
+            elif "Status" in vt_data:
+                st.info(f"ℹ️ {vt_data['Status']}")
+
+        with col2:
+            st.markdown("### 👁️ OTX AlienVault")
+            st.json({k: v for k, v in otx_data.items() if k != "source"})
+            if "Error" in otx_data:
+                st.caption(f"⚠️ {otx_data['Error']}")
+
+        st.markdown(f"### Overall Risk: **{result['Risk']}**")
+
+    # ── Save ─────────────────────────────────────────────────────
+    if save_result:
+        save_to_csv(result)
+        st.session_state["last_result"] = result
+
+# ================================================================
+# Reload + SOC Summary
+# ================================================================
+history = load_history()
+
 st.subheader("SOC Threat Summary")
 st.write("Total Investigations:", len(history))
 if "Risk" in history.columns:
-    st.write("High Risk:", len(history[history["Risk"]=="High Risk 🔴"]))
-    st.write("Medium Risk:", len(history[history["Risk"]=="Medium Risk 🟠"]))
-    st.write("Low Risk:", len(history[history["Risk"]=="Low Risk 🟢"]))
-st.write("Top Countries:")
-if "Country" in history.columns:
-    st.write(history["Country"].value_counts().head(5))
+    st.write("High Risk:",   len(history[history["Risk"] == "High Risk 🔴"]))
+    st.write("Medium Risk:", len(history[history["Risk"] == "Medium Risk 🟠"]))
+    st.write("Low Risk:",    len(history[history["Risk"] == "Low Risk 🟢"]))
 
-# -------------------------------
-# Investigation History
-# -------------------------------
+if "Country" in history.columns:
+    valid_countries = history[
+        history["Country"].notna() & (history["Country"] != "N/A")
+    ]
+    if not valid_countries.empty:
+        st.write("Top Countries:")
+        st.write(valid_countries["Country"].value_counts().head(5))
+
 if st.checkbox("Show Investigation History"):
     st.subheader("Investigation History")
-    st.write(history)
+    st.dataframe(history)
 
-# -------------------------------
-# Threat Statistics
-# -------------------------------
-st.subheader("Threat Statistics")
 if "Abuse Score" in history.columns and not history.empty:
+    st.subheader("Threat Statistics")
     st.bar_chart(history["Abuse Score"])
 
-# -------------------------------
-# Risk Distribution
-# -------------------------------
 if "Risk" in history.columns and not history.empty:
     st.subheader("Risk Distribution")
     st.bar_chart(history["Risk"].value_counts())
 
-# -------------------------------
-# Top Attacking Countries
-# -------------------------------
 if "Country" in history.columns and not history.empty:
-    st.subheader("Top Attacking Countries")
-    st.bar_chart(history["Country"].value_counts().head(5))
+    valid = history[history["Country"] != "N/A"]
+    if not valid.empty:
+        st.subheader("Top Attacking Countries")
+        st.bar_chart(valid["Country"].value_counts().head(5))
 
-# -------------------------------
-# Live Threat Feed
-# -------------------------------
 st.subheader("Live Threat Feed")
 if not history.empty:
     latest = history.tail(5)
-    for index, row in latest.iterrows():
+    for _, row in latest.iterrows():
+        country = row.get("Country", "N/A")
+        if pd.isna(country):
+            country = "N/A"
         st.write(
-            f"🚨 IOC: {row.get('IOC','N/A')} | Type: {row.get('IOC Type','N/A')} | Country: {row.get('Country','N/A')} | Risk: {row.get('Risk','N/A')} | Abuse Score: {row.get('Abuse Score','N/A')}"
+            f"🚨 IOC: {row.get('IOC','N/A')} | "
+            f"Type: {row.get('IOC Type','N/A')} | "
+            f"Country: {country} | "
+            f"Risk: {row.get('Risk','N/A')} | "
+            f"Abuse Score: {row.get('Abuse Score','N/A')}"
         )
-# -------------------------------
-# Global Threat Map
-# -------------------------------
-if "Country" in history.columns and not history.empty:
-    history_map = history.dropna(subset=["Country"])
-    if not history_map.empty:
-        import pycountry
-        from geopy.geocoders import Nominatim
-        geolocator = Nominatim(user_agent="geoapiExercises")
-        coords = []
-        for country_code in history_map["Country"].unique():
-            try:
-                loc = geolocator.geocode(country_code)
-                if loc:
-                    coords.append({"Country": country_code, "Latitude": loc.latitude, "Longitude": loc.longitude})
-            except:
-                continue
-        map_df = pd.DataFrame(coords)
-        if not map_df.empty:
-            st.subheader("Attacker Country Heatmap")
-            st.pydeck_chart(
-                pdk.Deck(
-                    map_style="mapbox://styles/mapbox/light-v9",
-                    initial_view_state=pdk.ViewState(latitude=20, longitude=0, zoom=1),
-                    layers=[
-                        pdk.Layer(
-                            "ScatterplotLayer",
-                            data=map_df,
-                            get_position=["Longitude", "Latitude"],
-                            get_color=[255, 0, 0],
-                            get_radius=500000,
-                            pickable=True
-                        )
-                    ]
-                )
-            )

@@ -8,3 +8,5 @@ def classify_risk(score):
 
     else:
         return "Low Risk"
+    
+
