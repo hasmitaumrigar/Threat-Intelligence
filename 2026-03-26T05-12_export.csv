@@ -1,0 +1,14 @@
+﻿,Time,IOC,IOC Type,IP,Country,ISP,Abuse Score,Reports,Risk
+0,2026-03-26 04:01:35,e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b8555,File Hash,N/A,N/A,N/A,0,0,Low Risk 🟢
+1,2026-03-26 04:02:12,e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855,File Hash,N/A,N/A,N/A,100,0,High Risk 🔴
+2,2026-03-26 04:02:48,eed317ef0ac1c7e59b56c4ac00d43bb4d1a7a9e5f2d83c27b85b6bed2d25d351,File Hash,N/A,N/A,N/A,0,0,Low Risk 🟢
+3,2026-03-26 04:03:55,44d88612fea8a8f36de82e1278abb02f,File Hash,N/A,N/A,N/A,100,67,High Risk 🔴
+4,2026-03-26 04:04:40,7c4a8d09ca3762af61e59520943dc26494f8941b,File Hash,N/A,N/A,N/A,90,0,High Risk 🔴
+5,2026-03-26 04:05:22,duckdns.org,Domain,N/A,N/A,N/A,51,1,Medium Risk 🟠
+6,2026-03-26 04:06:53,no-ip.com,Domain,N/A,N/A,N/A,0,0,Low Risk 🟢
+7,2026-03-26 04:08:03,freebooter.top,Domain,N/A,N/A,N/A,30,0,Low Risk 🟢
+8,2026-03-26 04:08:46,iplogger.org,Domain,N/A,N/A,N/A,0,0,Low Risk 🟢
+9,2026-03-26 04:09:33,185.220.101.5,IP Address,185.220.101.5,DE,Artikel10 e.V.,100,163,High Risk 🔴
+10,2026-03-26 04:11:00,45.33.32.156,IP Address,45.33.32.156,US,Linode,4,2,Low Risk 🟢
+11,2026-03-26 04:12:00,162.247.74.74,IP Address,162.247.74.74,US,CALYX NETWORKS,7,0,Low Risk 🟢
+12,2026-03-26 04:12:28,91.92.109.174,IP Address,91.92.109.174,BG,VPS.BG,2,0,Low Risk 🟢
