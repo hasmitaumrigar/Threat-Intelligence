@@ -1,9 +1,8 @@
 import re
 import requests
+import os
+import streamlit as st
 from dotenv import load_dotenv
-import os 
-import streamlit as st 
-load_dotenv()
 
 def get_secret(key: str) -> str:
     try:
@@ -14,9 +13,9 @@ def get_secret(key: str) -> str:
 # -------------------------------
 # API Keys
 # -------------------------------
-ABUSEIPDB_KEY = get_secret("9b98bed5be88352dee8f15b6aa4da50da57e0e9781b440b88b8f5c6fb434bc99ec15fefc2b52b9a0")
-VT_KEY = get_secret("8396bc735ce56ccd679a2690f76dbaccfc99d959311abc4d118287971c5be39e")
-OTX_KEY = get_secret("8cefcbea66bfced732d9ce10f8c5bdc84db9afbef8efca1a24a9d1c4e32e703e")
+ABUSEIPDB_KEY = get_secret("ABUSEIPDB_KEY")
+VT_KEY        = get_secret("VT_KEY")
+OTX_KEY       = get_secret("OTX_KEY")
 # -------------------------------
 # IOC Type Auto-Detection
 # -------------------------------

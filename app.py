@@ -1,10 +1,9 @@
-# app.py — Advanced Threat Intelligence Dashboard
-
 import streamlit as st
 import pandas as pd
 import os
 import csv
 import requests
+import multi_threat_lookup as mtl  # ← add this line
 from datetime import datetime
 from threat_lookup import lookup_ip
 from multi_threat_lookup import (
@@ -15,8 +14,6 @@ from multi_threat_lookup import (
     validate_otx_key,
     HIGH_RISK_CATEGORIES, MEDIUM_RISK_CATEGORIES,
 )
-from report_generator import generate_report
-
 # -------------------------------
 # CONFIG
 # -------------------------------
@@ -89,10 +86,6 @@ def save_to_csv(result: dict):
 # Dashboard
 # -------------------------------
 st.title("Threat Intelligence Dashboard")
-
-# OTX key warning shown once at top
-if not validate_otx_key():
-    st.sidebar.warning("⚠️ OTX API key not configured or invalid. OTX results will show 0 pulses.")
 
 ioc_type  = st.selectbox("Select IOC Type", ["IP Address", "Domain", "File Hash"])
 ioc_value = st.text_input("Enter IOC")

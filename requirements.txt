@@ -6,3 +6,4 @@ pydeck
 geopy
 pycountry
 fpdf
+python-dotenv
