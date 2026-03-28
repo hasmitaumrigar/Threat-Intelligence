@@ -3,7 +3,7 @@ import requests
 import os
 import streamlit as st
 from dotenv import load_dotenv
-
+load_dotenv("secrets.env")
 def get_secret(key: str) -> str:
     try:
         return st.secrets[key]
