@@ -6,6 +6,7 @@ import requests
 import multi_threat_lookup as mtl  # ← add this line
 from datetime import datetime
 from threat_lookup import lookup_ip
+from report_generator import generate_report
 from multi_threat_lookup import (
     VT_KEY,
     detect_ioc_type,
@@ -246,18 +247,21 @@ if st.button("Check Threat") and ioc_value:
 
         st.markdown(f"### Overall Risk: **{result['Risk']}**")
 
-    # ── Save ─────────────────────────────────────────────────────
+# ── Save ─────────────────────────────────────────────────────
     if save_result:
         save_to_csv(result)
         st.session_state["last_result"] = result
-        
+        os.makedirs("reports", exist_ok=True)
+        pdf_bytes = generate_report(result)
+        ioc_name  = result.get("IOC", "report").replace("/", "_")
+        pdf_path  = f"reports/threat_report_{ioc_name}.pdf"
+        with open(pdf_path, "wb") as f:
+            f.write(pdf_bytes)
+        st.success(f"✅ Report auto-saved to {pdf_path}")
+
 if "last_result" in st.session_state:
-    from report_generator import generate_report
-    
     pdf_bytes = generate_report(st.session_state["last_result"])
-    
-    ioc_name = st.session_state["last_result"].get("IOC", "report").replace("/", "_")
-    
+    ioc_name  = st.session_state["last_result"].get("IOC", "report").replace("/", "_")
     st.download_button(
         label="📄 Download PDF Report",
         data=pdf_bytes,
