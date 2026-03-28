@@ -257,7 +257,20 @@ if st.button("Check Threat") and ioc_value:
     if save_result:
         save_to_csv(result)
         st.session_state["last_result"] = result
-
+        
+if "last_result" in st.session_state:
+    from report_generator import generate_report
+    
+    pdf_bytes = generate_report(st.session_state["last_result"])
+    
+    ioc_name = st.session_state["last_result"].get("IOC", "report").replace("/", "_")
+    
+    st.download_button(
+        label="📄 Download PDF Report",
+        data=pdf_bytes,
+        file_name=f"threat_report_{ioc_name}.pdf",
+        mime="application/pdf",
+    )
 # ================================================================
 # Reload + SOC Summary
 # ================================================================

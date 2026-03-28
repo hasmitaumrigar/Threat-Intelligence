@@ -1,15 +1,22 @@
-# multi_threat_lookup.py — All lookup functions + IOC detection
- 
 import re
 import requests
 from dotenv import load_dotenv
+import os 
+import streamlit as st 
 load_dotenv()
+
+def get_secret(key: str) -> str:
+    try:
+        return st.secrets[key]
+    except Exception:
+        return os.getenv(key, "")
+     
 # -------------------------------
 # API Keys
 # -------------------------------
-ABUSEIPDB_KEY = "9b98bed5be88352dee8f15b6aa4da50da57e0e9781b440b88b8f5c6fb434bc99ec15fefc2b52b9a0"
-VT_KEY = "8396bc735ce56ccd679a2690f76dbaccfc99d959311abc4d118287971c5be39e"
-OTX_KEY = "8cefcbea66bfced732d9ce10f8c5bdc84db9afbef8efca1a24a9d1c4e32e703e"
+ABUSEIPDB_KEY = get_secret("9b98bed5be88352dee8f15b6aa4da50da57e0e9781b440b88b8f5c6fb434bc99ec15fefc2b52b9a0")
+VT_KEY = get_secret("8396bc735ce56ccd679a2690f76dbaccfc99d959311abc4d118287971c5be39e")
+OTX_KEY = get_secret("8cefcbea66bfced732d9ce10f8c5bdc84db9afbef8efca1a24a9d1c4e32e703e")
 # -------------------------------
 # IOC Type Auto-Detection
 # -------------------------------
@@ -32,10 +39,7 @@ def detect_ioc_type(value: str) -> str:
             return ioc_type
     return "Unknown"
  
- 
-# -------------------------------
-# High-risk category keywords that boost the score
-# -------------------------------
+
 HIGH_RISK_CATEGORIES = {
     "phishing", "malware", "malicious", "ransomware", "botnet",
     "exploit", "trojan", "spyware", "adware", "spam", "anonymizer",
@@ -65,10 +69,7 @@ def category_score_boost(categories: dict) -> int:
             return 20
     return 0
  
- 
-# -------------------------------
-# malicious=full, suspicious=half, categories add boost
-# -------------------------------
+
 def calculate_vt_score(stats: dict, categories: dict = None) -> int:
     malicious  = stats.get("malicious",  0)
     suspicious = stats.get("suspicious", 0)
@@ -113,10 +114,6 @@ def check_abuseipdb(ip: str) -> dict:
             "Abuse Score": 0, "Country": "N/A",
         }
  
- 
-# -------------------------------
-# VirusTotal — domain + file hash + IP
-# -------------------------------
 def check_virustotal(ioc: str, ioc_type: str = "domain") -> dict:
     if ioc_type == "file":
         length = len(ioc.strip())
@@ -228,7 +225,7 @@ def check_otx(ioc: str, ioc_type: str = "IPv4") -> dict:
     url      = f"https://otx.alienvault.com/api/v1/indicators/{otx_type}/{ioc}/general"
     headers  = {"X-OTX-API-KEY": OTX_KEY}
  
-    if not OTX_KEY or OTX_KEY == "YOUR_OTX_KEY":
+    if not OTX_KEY or OTX_KEY == "":
         return {
             "source":      "OTX AlienVault",
             "IOC":         ioc,

@@ -1,7 +1,7 @@
 # threat_lookup.py
 import requests
 
-ABUSEIPDB_KEY = "9b98bed5be88352dee8f15b6aa4da50da57e0e9781b440b88b8f5c6fb434bc99ec15fefc2b52b9a0"
+ABUSEIPDB_KEY = "KEY"
 
 RESERVED_IPS = {"0.0.0.0", "127.0.0.1", "255.255.255.255", "::1"}
 
